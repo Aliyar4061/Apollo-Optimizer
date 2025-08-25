@@ -1,9 +1,219 @@
 # Apollo-Optimizer
-Apollo Optimizer
+Apollo Optimizer 🚀
+Adaptive Policy for Optimizer-space Linear Linking
+
+Apollo is a novel optimization algorithm that dynamically blends the strengths of AdamW and Lion optimizers by automatically adapting the interpolation factor based on update direction agreement.
+
+🌟 Key Features
+Dynamic Adaptation: Automatically adjusts the blend ratio between AdamW and Lion updates
+
+Agreement-based Interpolation: Uses cosine similarity to measure consensus between update directions
+
+No Manual Tuning: Eliminates the need for fixed hyperparameter gamma
+
+Memory Efficient: Minimal additional state requirements
+
+Decoupled Weight Decay: AdamW-style weight decay implementation
+
+🧠 How It Works
+Apollo operates through a four-step process:
+
+Dual Update Calculation: Computes both AdamW-style (adaptive) and Lion-style (sign-based) updates
+
+Agreement Measurement: Uses cosine similarity to quantify directional consensus
+
+Smoothing: Applies EMA smoothing to the agreement factor for stability
+
+Dynamic Interpolation: Blends updates proportionally to the measured agreement
+
+The adaptive mechanism ensures that when both optimizers agree on the direction, Apollo leans more towards the Lion update (faster convergence), while maintaining AdamW's adaptability when directions diverge.
+
+📊 Mathematical Formulation
+For each parameter at step t:
+
+AdamW update: update_adam = m_hat / (√v_hat + ε)
+
+Lion update: update_lion = sign(m_hat)
+
+Agreement factor: γ = (EMA(cosine_similarity) + 1) / 2
+
+Final update: (1 - γ) * update_adam + γ * update_lion
 
 
 
+![Example Image](Apollo.jpg)
 
+
+## Code of Apollo Optimizer
+```python
+# ---------------------------
+# CosAdam Optimizer ( Implementation)
+# ---------------------------
+
+"""
+apollo.py
+
+Implements the Apollo optimizer: Adaptive Policy for Optimizer-space Linear Linking.
+
+Apollo dynamically interpolates between AdamW-style and Lion-style update directions
+based on the cosine similarity of their proposed updates. This adaptive interpolation
+eliminates the need for a manually tuned fixed mixing coefficient (e.g., gamma).
+"""
+
+from typing import Any, Dict, List, Optional, Union
+
+import torch
+import torch.nn.functional as F
+import torch.optim as optim
+
+__all__ = ['Apollo']
+
+
+class Apollo(optim.Optimizer):
+    r"""Implements the Apollo optimizer.
+
+    Apollo adaptively combines AdamW and Lion update directions by measuring
+    the cosine similarity between them and using an exponential moving average (EMA)
+    to stabilize the interpolation coefficient. This allows the optimizer to
+    automatically favor one strategy over the other depending on gradient behavior.
+
+    The update rule is:
+
+    .. math::
+        \text{update} = (1 - \gamma_t) \cdot \text{AdamW-update} + \gamma_t \cdot \text{Lion-update}
+
+    where :math:`\gamma_t` is dynamically computed from the smoothed cosine similarity
+    between the two update vectors at step :math:`t`.
+
+    Arguments:
+        params: Iterable of parameters to optimize or dicts defining parameter groups.
+        lr: Learning rate (default: 1e-3).
+        betas: Coefficients for exponential moving averages. Should be a tuple of
+            (beta1 for m, beta2 for v, beta3 for agreement EMA) (default: (0.9, 0.999, 0.9)).
+        eps: Term added to denominator for numerical stability (default: 1e-8).
+        weight_decay: Weight decay (L2 penalty) (default: 1e-2).
+
+    Example:
+        >>> import torch
+        >>> import torch.nn as nn
+        >>> from apollo import Apollo
+        >>>
+        >>> model = nn.Linear(10, 1)
+        >>> optimizer = Apollo(model.parameters(), lr=1e-3)
+        >>>
+        >>> def closure():
+        >>>     optimizer.zero_grad()
+        >>>     output = model(torch.randn(1, 10))
+        >>>     loss = output.pow(2).sum()
+        >>>     loss.backward()
+        >>>     return loss
+        >>>
+        >>> for _ in range(100):
+        >>>     loss = optimizer.step(closure)
+    """
+
+    def __init__(
+        self,
+        params: Union[Iterator[torch.nn.Parameter], List[Dict[Any, Any]]],
+        lr: float = 1e-3,
+        betas: tuple = (0.9, 0.999, 0.9),
+        eps: float = 1e-8,
+        weight_decay: float = 1e-2,
+    ):
+        if not 0.0 <= lr:
+            raise ValueError(f"Invalid learning rate: {lr}")
+        if not 0.0 <= eps:
+            raise ValueError(f"Invalid epsilon value: {eps}")
+        if not 0.0 <= betas[0] < 1.0:
+            raise ValueError(f"Invalid beta_1: {betas[0]}")
+        if not 0.0 <= betas[1] < 1.0:
+            raise ValueError(f"Invalid beta_2: {betas[1]}")
+        if not 0.0 <= betas[2] < 1.0:
+            raise ValueError(f"Invalid beta_3 for adaptation: {betas[2]}")
+        if not 0.0 <= weight_decay:
+            raise ValueError(f"Invalid weight_decay value: {weight_decay}")
+
+        defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
+        super(Apollo, self).__init__(params, defaults)
+
+    @torch.no_grad()
+    def step(self, closure: Optional[Callable[[], torch.Tensor]] = None) -> Optional[torch.Tensor]:
+        """Performs a single optimization step.
+
+        Arguments:
+            closure: A callable that re-evaluates the model and returns the loss.
+                     Optional for most cases.
+
+        Returns:
+            loss: Optional loss tensor if closure is provided.
+        """
+        loss = None
+        if closure is not None:
+            with torch.enable_grad():
+                loss = closure()
+
+        for group in self.param_groups:
+            beta1, beta2, beta3 = group['betas']
+
+            for p in group['params']:
+                if p.grad is None:
+                    continue
+                grad = p.grad
+                if grad.is_sparse:
+                    raise RuntimeError('Apollo does not support sparse gradients.')
+
+                state = self.state[p]
+
+                # Initialize state
+                if len(state) == 0:
+                    state['step'] = 0
+                    state['exp_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state['exp_avg_sq'] = torch.zeros_like(p, memory_format=torch.preserve_format)
+                    state['update_agreement'] = torch.zeros((), device=p.device)  # scalar
+
+                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+                state['step'] += 1
+
+                # Decoupled weight decay (AdamW-style)
+                if group['weight_decay'] != 0:
+                    p.add_(p, alpha=-group['weight_decay'] * group['lr'])
+
+                # Update biased first and second moment estimates
+                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+                exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
+
+                # Bias correction
+                bias_correction1 = 1 - beta1 ** state['step']
+                bias_correction2 = 1 - beta2 ** state['step']
+
+                m_hat = exp_avg / bias_correction1
+                v_hat = exp_avg_sq / bias_correction2
+
+                # --- High-Novelty Adaptive Mechanism ---
+                # 1. Compute candidate updates
+                denom = (v_hat.sqrt() + group['eps'])
+                update_adam = m_hat / denom
+                update_lion = torch.sign(m_hat)
+
+                # 2. Measure directional agreement via cosine similarity
+                cos_sim = F.cosine_similarity(
+                    update_adam.flatten(), update_lion.flatten(), dim=0, eps=1e-10
+                )
+
+                # 3. Smooth agreement with EMA
+                state['update_agreement'].mul_(beta3).add_(cos_sim, alpha=1 - beta3)
+
+                # 4. Map smoothed cosine similarity [-1, 1] → gamma [0, 1]
+                gamma = (state['update_agreement'].item() + 1.0) / 2.0
+
+                # Interpolate updates
+                final_update = (1 - gamma) * update_adam + gamma * update_lion
+
+                # Apply update
+                p.add_(final_update, alpha=-group['lr'])
+
+        return loss
+```
 
 
 
