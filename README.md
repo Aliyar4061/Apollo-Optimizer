@@ -215,13 +215,7 @@ class Apollo(optim.Optimizer):
         return loss
 ```
 
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
-[Example Image](svhn_test_metrics.png)
+
 
 
 # Apollo Optimizer Performance Analysis
@@ -337,6 +331,15 @@ This repository contains performance evaluations of the Apollo optimizer compare
 | **Mean ± Std** | 0.8640 ± 0.017 | 0.8638 ± 0.017 | 0.9891 ± 0.0029 | 25.42 ± 0.58 s |
 
 *Default configuration: lr=0.001, β₁=0.9, β₂=0.999, β₃=0.9, wd=0.01, eps=1e-8*
+
+
+[Example Image](mnn_test_metrics.png)
+[Example Image](svhn_test_metrics.png)
+[Example Image](imdb_test_metrics.png)
+[Example Image](mn_test_metrics.png)
+[Example Image](mnn_test_metrics.png)
+[Example Image](sst2_test_metrics.png)
+[Example Image](Combine.png)
 
 ## Key Findings
 
