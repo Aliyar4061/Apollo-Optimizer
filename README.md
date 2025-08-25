@@ -215,7 +215,13 @@ class Apollo(optim.Optimizer):
         return loss
 ```
 
-
+[Example Image](Apollo.jpg)
+[Example Image](Apollo.jpg)
+[Example Image](Apollo.jpg)
+[Example Image](Apollo.jpg)
+[Example Image](Apollo.jpg)
+[Example Image](Apollo.jpg)
+[Example Image](Combine.png)
 
 
 # Apollo Optimizer Performance Analysis
