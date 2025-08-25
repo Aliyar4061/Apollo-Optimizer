@@ -28,16 +28,6 @@ Dynamic Interpolation: Blends updates proportionally to the measured agreement
 
 The adaptive mechanism ensures that when both optimizers agree on the direction, Apollo leans more towards the Lion update (faster convergence), while maintaining AdamW's adaptability when directions diverge.
 
-📊 Mathematical Formulation
-For each parameter at step t:
-
-AdamW update: update_adam = m_hat / (√v_hat + ε)
-
-Lion update: update_lion = sign(m_hat)
-
-Agreement factor: γ = (EMA(cosine_similarity) + 1) / 2
-
-Final update: (1 - γ) * update_adam + γ * update_lion
 
 
 
