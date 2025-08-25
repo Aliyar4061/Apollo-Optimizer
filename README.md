@@ -337,7 +337,7 @@ This repository contains performance evaluations of the Apollo optimizer compare
 [Example Image](svhn_test_metrics.png)
 [Example Image](imdb_test_metrics.png)
 [Example Image](mn_test_metrics.png)
-[Example Image](mnn_test_metrics.png)
+[Example Image](ag_test_metrics.png)
 [Example Image](sst2_test_metrics.png)
 [Example Image](combine.png)
 
